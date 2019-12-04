@@ -567,3 +567,8 @@ class ClearCenterMainController(BaseMainController):
 
     provider = 'clearcenter'
     ComputeController = compute_ctls.ClearCenterComputeController
+
+
+class KubevirtMainController(BaseMainController):
+    provider = 'kubevirt.io'
+    ComputeController = compute_ctls.KubevirtComputeController

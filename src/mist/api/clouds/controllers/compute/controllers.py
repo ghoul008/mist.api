@@ -1834,3 +1834,10 @@ class ClearCenterComputeController(BaseComputeController):
 
     def list_locations(self, persist=True):
         return []
+
+class KubevirtComputeController(BaseComputeController):
+
+    def _connect(self):
+        return get_driver(Provider.KUBEVIRT)()
+        
+

@@ -56,6 +56,10 @@ else:
 
 log = logging.getLogger(__name__)
 
+__all__=[
+    "BaseComputeController",
+]
+
 
 def _decide_machine_cost(machine, tags=None, cost=(0, 0)):
     """Decide what the monthly and hourly machine cost is

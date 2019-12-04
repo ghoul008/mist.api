@@ -19,7 +19,34 @@ from mist.api.exceptions import RequiredParameterMissingError
 
 from mist.api import config
 
-
+__all__ = [
+    "Cloud",
+    "CloudLocation",
+    "CloudSize",
+    "AmazonCloud",
+    "AlibabaCloud",
+    "ClearAPICloud",
+    "DigitalOceanCloud",
+    "MaxihostCloud",
+    "LinodeCloud",
+    "RackSpaceCloud",
+    "SoftLayerCloud",
+    "AzureCloud",
+    "AzureArmCloud",
+    "GoogleCloud",
+    "HostVirtualCloud",
+    "PacketCloud",
+    "VultrCloud",
+    "VSphereCloud",
+    "VCloud",
+    "OpenStackCloud",
+    "DockerCloud",
+    "LibvirtCloud",
+    "OnAppCloud",
+    "OtherCloud",
+    "ClearCenterCloud",
+    "KubevirtCloud"
+    ]
 # This is a map from provider name to provider class, eg:
 # 'linode': LinodeCloud
 # It is autofilled by _populate_clouds which is run on the end of this file.
@@ -539,6 +566,28 @@ class ClearCenterCloud(Cloud):
 
     _private_fields = ('apikey', )
     _controller_cls = controllers.ClearCenterMainController
+
+
+class KubevirtCloud(Cloud):
+    host = me.StringField(required=True)
+    port = me.IntField(required=True, default=6443)
+
+    # USER / PASS authentication optional
+    username = me.StringField(required=False)
+    password = me.StringField(required=False)
+
+    # Bearer Token authentication optional
+    key_file = me.StringField(required=False)
+
+    # TLS Authentication
+    # key_file again
+    cert_file = me.StringField(required=False)
+
+    #certificate authority
+    ca_cert_file = me.StringField(required=False)
+
+    _private_fields = ('password', 'keyfile')
+    _controller_cls = controllers.KubevirtMainController
 
 
 _populate_clouds()
