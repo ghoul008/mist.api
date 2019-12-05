@@ -1892,8 +1892,48 @@ class KubevirtComputeController(BaseComputeController):
                                                  verify=verify
                                                  )
         # username/password auth
-        else:
+        elif self.cloud.username and self.cloud.password:
+            key = self.cloud.username
+            secret = self.cloud.password
 
+            return get_driver(Provider.KUBEVIRT)(key=key,
+                                                 secret=secret,
+                                                 secure=True,
+                                                 host=host,
+                                                 port=port,
+                                                 verify=verify)
+        #raise error otherwise??
+
+        def _list_machines__machine_actions(self, machine, machine_libcloud):
+            super(KubevirtComputeController, self)._list_machines__machine_actions(
+                  self,machine, machine_libcloud)
+            machine.actions.start = True
+            machine.actions.stop = True
+            machine.actions.reboot = True
+            machine.actions.destroy = True
+
+        def _reboot_machine(self, machine, machine_libcloud):
+            return self.connection.reboot_node(machine_libcloud)
         
+        def _start_machine(self, machine, machine_libcloud):
+            return self.connection.start_node(machine_libcloud)
+        
+        def _stop_machine(self, machine, machine_libcloud):
+            return self.connection.stop_node(machine_libcloud)
+
+        def _destroy_machine(self, machine, machine_libcloud):
+            return self.connection.destroy_node(machine_libcloud)
+        
+        def _list_machines__get_custom_size(self, machine_libcloud):
+            # FIXME: resolve circular import issues
+            from mist.api.clouds.models import CloudSize
+            _size = CloudSize(cloud=self.cloud,
+                          external_id=str(machine_libcloud.id))
+            if machine_libcloud.state == "Running":
+                _size.ram = machine_libcloud.extra['ram']
+                _size.cpus = machine_libcloud.extra['cpu']
+            _size.save()
+            return _size
         
 
+            
