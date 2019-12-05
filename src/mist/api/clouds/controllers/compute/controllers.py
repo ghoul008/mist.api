@@ -1838,6 +1838,62 @@ class ClearCenterComputeController(BaseComputeController):
 class KubevirtComputeController(BaseComputeController):
 
     def _connect(self):
-        return get_driver(Provider.KUBEVIRT)()
+        host, port = dnat(self.cloud.owner,
+                          self.cloud.host, self.cloud.port)
+        try:
+            socket.setdefaulttimeout(15)
+            so = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            so.connect((sanitize_host(host), int(port)))
+            so.close()
+        except:
+            raise Exception("Make sure host is accessible "
+                            "and kubernetes port is specified")
+
+        verify = self.cloud.verify
+        ca_cert = None
+        if self.cloud.ca_cert_file:
+                ca_cert_temp_file = tempfile.NamedTemporaryFile(delete=False)
+                ca_cert_temp_file.write(self.cloud.ca_cert_file.encode())
+                ca_cert_temp_file.close()
+                ca_cert = ca_cert_temp_file.name
+
+        # tls authentication
+        if self.cloud.key_file and self.cloud.cert_file:
+            key_temp_file = tempfile.NamedTemporaryFile(delete=False)
+            key_temp_file.write(self.cloud.key_file.encode())
+            key_temp_file.close()
+            key_file = key_temp_file.name
+            cert_temp_file = tempfile.NamedTemporaryFile(delete=False)
+            cert_temp_file.write(self.cloud.cert_file.encode())
+            cert_temp_file.close()
+            cert_file = cert_temp_file.name
+            
+
+            return get_driver(Provider.KUBEVIRT)(secure=True,
+                                                 host=host,
+                                                 port= port,
+                                                 key_file=key_file,
+                                                 cert_file=cert_file,
+                                                 ca_cert=ca_cert,
+                                                 verify=verify)
+        # token bearer authentication
+        elif self.cloud.token_bearer_auth:
+            key_temp_file = tempfile.NamedTemporaryFile(delete=False)
+            key_temp_file.write(self.cloud.key_file.encode())
+            key_temp_file.close()
+            key_file = key_temp_file.name
+
+            return get_driver(Provider.KUBEVIRT)(secure=True,
+                                                 host=host,
+                                                 port=port,
+                                                 key_file=key_file,
+                                                 ca_cert=ca_cert,
+                                                 token_bearer_auth=True,
+                                                 verify=verify
+                                                 )
+        # username/password auth
+        else:
+
+        
         
 

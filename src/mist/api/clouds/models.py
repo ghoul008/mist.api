@@ -577,6 +577,7 @@ class KubevirtCloud(Cloud):
     password = me.StringField(required=False)
 
     # Bearer Token authentication optional
+    token_bearer_auth = me.BooleanField(required=False)
     key_file = me.StringField(required=False)
 
     # TLS Authentication
@@ -585,6 +586,9 @@ class KubevirtCloud(Cloud):
 
     #certificate authority
     ca_cert_file = me.StringField(required=False)
+
+    #certificate verification
+    verify = me.BooleanField(required=False)
 
     _private_fields = ('password', 'keyfile')
     _controller_cls = controllers.KubevirtMainController
