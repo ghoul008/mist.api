@@ -38,7 +38,7 @@ from mist.api.clouds.controllers.storage.base import BaseStorageController
 log = logging.getLogger(__name__)
 
 __all__ = [
-    "BaseMainController",    
+    "BaseMainController",
 ]
 
 

@@ -46,7 +46,7 @@ __all__ = [
     "OtherCloud",
     "ClearCenterCloud",
     "KubevirtCloud"
-    ]
+]
 # This is a map from provider name to provider class, eg:
 # 'linode': LinodeCloud
 # It is autofilled by _populate_clouds which is run on the end of this file.
@@ -584,10 +584,10 @@ class KubevirtCloud(Cloud):
     # key_file again
     cert_file = me.StringField(required=False)
 
-    #certificate authority
+    # certificate authority
     ca_cert_file = me.StringField(required=False)
 
-    #certificate verification
+    # certificate verification
     verify = me.BooleanField(required=False)
 
     _private_fields = ('password', 'keyfile')
