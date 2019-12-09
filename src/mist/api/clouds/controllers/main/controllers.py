@@ -570,5 +570,11 @@ class ClearCenterMainController(BaseMainController):
 
 
 class KubevirtMainController(BaseMainController):
-    provider = 'kubevirt.io'
+    provider = 'kubevirt'
     ComputeController = compute_ctls.KubevirtComputeController
+
+    def _update__preparse_kwargs(self, kwargs):
+        host = kwargs.get('host', self.cloud.host)
+        if host:
+            host = sanitize_host(host)
+            check_host(host)

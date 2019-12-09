@@ -1835,6 +1835,7 @@ class ClearCenterComputeController(BaseComputeController):
     def list_locations(self, persist=True):
         return []
 
+
 class KubevirtComputeController(BaseComputeController):
 
     def _connect(self):
@@ -1867,11 +1868,10 @@ class KubevirtComputeController(BaseComputeController):
             cert_temp_file.write(self.cloud.cert_file.encode())
             cert_temp_file.close()
             cert_file = cert_temp_file.name
-            
 
             return get_driver(Provider.KUBEVIRT)(secure=True,
                                                  host=host,
-                                                 port= port,
+                                                 port=port,
                                                  key_file=key_file,
                                                  cert_file=cert_file,
                                                  ca_cert=ca_cert,
@@ -1902,11 +1902,12 @@ class KubevirtComputeController(BaseComputeController):
                                                  host=host,
                                                  port=port,
                                                  verify=verify)
-        #raise error otherwise??
+        # raise error otherwise??
 
         def _list_machines__machine_actions(self, machine, machine_libcloud):
-            super(KubevirtComputeController, self)._list_machines__machine_actions(
-                  self,machine, machine_libcloud)
+            super(KubevirtComputeController,
+                  self)._list_machines__machine_actions(
+                self, machine, machine_libcloud)
             machine.actions.start = True
             machine.actions.stop = True
             machine.actions.reboot = True
@@ -1914,26 +1915,23 @@ class KubevirtComputeController(BaseComputeController):
 
         def _reboot_machine(self, machine, machine_libcloud):
             return self.connection.reboot_node(machine_libcloud)
-        
+
         def _start_machine(self, machine, machine_libcloud):
             return self.connection.start_node(machine_libcloud)
-        
+
         def _stop_machine(self, machine, machine_libcloud):
             return self.connection.stop_node(machine_libcloud)
 
         def _destroy_machine(self, machine, machine_libcloud):
             return self.connection.destroy_node(machine_libcloud)
-        
+
         def _list_machines__get_custom_size(self, machine_libcloud):
             # FIXME: resolve circular import issues
             from mist.api.clouds.models import CloudSize
             _size = CloudSize(cloud=self.cloud,
-                          external_id=str(machine_libcloud.id))
+                              external_id=str(machine_libcloud.id))
             if machine_libcloud.state == "Running":
                 _size.ram = machine_libcloud.extra['ram']
                 _size.cpus = machine_libcloud.extra['cpu']
             _size.save()
             return _size
-        
-
-            
