@@ -398,3 +398,34 @@ class PacketStorageController(BaseStorageController):
             except Machine.DoesNotExist:
                 log.error('%s attached to unknown machine "%s"', volume,
                           machine_id)
+
+
+class KubernetesStorageController(BaseStorageController):
+
+    def _list_volumes__postparse_volume(self, volume, libcloud_volume):
+        
+        # find machines attached to volume
+        namespace = libcloud_volume.extra['namespace']
+        machines = volume.cloud.ctl.compute.list_machines()
+        to_attach=[]
+        for machine in machines:
+            # might be a whole list?????
+            if 'pvc' in machine.extra:
+                if machine.extra['pvc'] == volume.name:
+                    to_attach.append(machine)
+        volume.attached_to.extend(to_attach)
+    
+    def _create_volume__prepare_args(self, kwargs):
+        '''
+        def create_volume(self, size, name, volumeMode='Filesystem',
+                      namespace='default',storageClassName=None,
+                      accessMode='ReadWriteOnce', matchLabels=None,
+                      matchExpressions=None):
+        '''
+        for param in ('name', 'size' ):
+            if not kwargs.get(param):
+                raise mist.api.exceptions.RequiredParameterMissingError(param)
+        if 'volumeMode' in kwargs:
+            if kwargs['volumeMode'] not in {'Filesystem', 'Block'}:
+                raise ValueError("volumeMode can be either Filesysystem or Block")
+        

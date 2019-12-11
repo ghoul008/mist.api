@@ -45,7 +45,7 @@ __all__ = [
     "OnAppCloud",
     "OtherCloud",
     "ClearCenterCloud",
-    "KubevirtCloud"
+    "KubeVirtCloud"
 ]
 # This is a map from provider name to provider class, eg:
 # 'linode': LinodeCloud
@@ -568,7 +568,7 @@ class ClearCenterCloud(Cloud):
     _controller_cls = controllers.ClearCenterMainController
 
 
-class KubevirtCloud(Cloud):
+class KubeVirtCloud(Cloud):
     host = me.StringField(required=True)
     port = me.IntField(required=True, default=6443)
 
@@ -590,8 +590,8 @@ class KubevirtCloud(Cloud):
     # certificate verification
     verify = me.BooleanField(required=False)
 
-    _private_fields = ('password', 'keyfile')
-    _controller_cls = controllers.KubevirtMainController
+    _private_fields = ('password', 'key_file', 'cert_file', 'ca_cert_file')
+    _controller_cls = controllers.KubeVirtMainController
 
 
 _populate_clouds()

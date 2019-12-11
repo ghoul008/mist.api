@@ -569,9 +569,9 @@ class ClearCenterMainController(BaseMainController):
     ComputeController = compute_ctls.ClearCenterComputeController
 
 
-class KubevirtMainController(BaseMainController):
+class KubeVirtMainController(BaseMainController):
     provider = 'kubevirt'
-    ComputeController = compute_ctls.KubevirtComputeController
+    ComputeController = compute_ctls.KubeVirtComputeController
 
     def _update__preparse_kwargs(self, kwargs):
         host = kwargs.get('host', self.cloud.host)

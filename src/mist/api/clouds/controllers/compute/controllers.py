@@ -1836,7 +1836,7 @@ class ClearCenterComputeController(BaseComputeController):
         return []
 
 
-class KubevirtComputeController(BaseComputeController):
+class KubeVirtComputeController(BaseComputeController):
 
     def _connect(self):
         host, port = dnat(self.cloud.owner,
@@ -1902,10 +1902,14 @@ class KubevirtComputeController(BaseComputeController):
                                                  host=host,
                                                  port=port,
                                                  verify=verify)
-        # raise error otherwise??
+        else:
+            msg = '''Necessary parameters for authentication are missing.
+            Either a key_file/cert_file pair or a username/pass pair
+            or a bearer token.'''   
+            raise ValueError(msg)
 
         def _list_machines__machine_actions(self, machine, machine_libcloud):
-            super(KubevirtComputeController,
+            super(KubeVirtComputeController,
                   self)._list_machines__machine_actions(
                 self, machine, machine_libcloud)
             machine.actions.start = True
@@ -1917,21 +1921,18 @@ class KubevirtComputeController(BaseComputeController):
             return self.connection.reboot_node(machine_libcloud)
 
         def _start_machine(self, machine, machine_libcloud):
-            return self.connection.start_node(machine_libcloud)
+            return self.connection.ex_start_node(machine_libcloud)
 
         def _stop_machine(self, machine, machine_libcloud):
-            return self.connection.stop_node(machine_libcloud)
+            return self.connection.ex_stop_node(machine_libcloud)
 
         def _destroy_machine(self, machine, machine_libcloud):
             return self.connection.destroy_node(machine_libcloud)
 
-        def _list_machines__get_custom_size(self, machine_libcloud):
-            # FIXME: resolve circular import issues
-            from mist.api.clouds.models import CloudSize
-            _size = CloudSize(cloud=self.cloud,
-                              external_id=str(machine_libcloud.id))
-            if machine_libcloud.state == "Running":
-                _size.ram = machine_libcloud.extra['ram']
-                _size.cpus = machine_libcloud.extra['cpu']
-            _size.save()
-            return _size
+        def _list_sizes__get_cpu(self, size):
+            cpu = int(size.extra.get('cpus') or 1)
+            if cpu > 1000:
+                cpu = cpu / 1000
+            elif cpu > 99:
+                cpu = 1
+            return cpu
