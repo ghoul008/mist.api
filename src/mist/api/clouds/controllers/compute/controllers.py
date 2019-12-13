@@ -1908,31 +1908,46 @@ class KubeVirtComputeController(BaseComputeController):
             or a bearer token.'''   
             raise ValueError(msg)
 
-        def _list_machines__machine_actions(self, machine, machine_libcloud):
-            super(KubeVirtComputeController,
-                  self)._list_machines__machine_actions(
-                self, machine, machine_libcloud)
-            machine.actions.start = True
-            machine.actions.stop = True
-            machine.actions.reboot = True
-            machine.actions.destroy = True
+    def _list_machines__machine_actions(self, machine, machine_libcloud):
+        super(KubeVirtComputeController,
+                self)._list_machines__machine_actions(
+                machine, machine_libcloud)
+        machine.actions.start = True
+        machine.actions.stop = True
+        machine.actions.reboot = True
+        machine.actions.destroy = True
 
-        def _reboot_machine(self, machine, machine_libcloud):
-            return self.connection.reboot_node(machine_libcloud)
+    def _reboot_machine(self, machine, machine_libcloud):
+        return self.connection.reboot_node(machine_libcloud)
 
-        def _start_machine(self, machine, machine_libcloud):
-            return self.connection.ex_start_node(machine_libcloud)
+    def _start_machine(self, machine, machine_libcloud):
+        return self.connection.ex_start_node(machine_libcloud)
 
-        def _stop_machine(self, machine, machine_libcloud):
-            return self.connection.ex_stop_node(machine_libcloud)
+    def _stop_machine(self, machine, machine_libcloud):
+        return self.connection.ex_stop_node(machine_libcloud)
 
-        def _destroy_machine(self, machine, machine_libcloud):
-            return self.connection.destroy_node(machine_libcloud)
+    def _destroy_machine(self, machine, machine_libcloud):
+        return self.connection.destroy_node(machine_libcloud)
 
-        def _list_sizes__get_cpu(self, size):
-            cpu = int(size.extra.get('cpus') or 1)
-            if cpu > 1000:
-                cpu = cpu / 1000
-            elif cpu > 99:
-                cpu = 1
-            return cpu
+    def _list_machines__postparse_machine(self, machine, machine_libcloud):
+        if not machine_libcloud.extra['pvcs']:
+            return
+        pvcs = machine_libcloud.extra['pvcs']
+        # FIXME: resolve circular import issues
+        from mist.api.models import Volume
+        volumes = Volume.objects.filter(cloud= self.cloud)
+        import ipdb; ipdb.set_trace()
+        for volume in volumes:
+            if 'pvc' in volume.extra:
+                if volume.extra['pvc']['name'] in pvcs:
+                    if machine not in volume.attached_to:
+                        volume.attached_to.append(machine)
+
+
+    def _list_sizes__get_cpu(self, size):
+        cpu = int(size.extra.get('cpus') or 1)
+        if cpu > 1000:
+            cpu = cpu / 1000
+        elif cpu > 99:
+            cpu = 1
+        return cpu

@@ -400,20 +400,8 @@ class PacketStorageController(BaseStorageController):
                           machine_id)
 
 
-class KubernetesStorageController(BaseStorageController):
+class KubernetesStorageController(BaseStorageController):    
 
-    def _list_volumes__postparse_volume(self, volume, libcloud_volume):
-        
-        # find machines attached to volume
-        namespace = libcloud_volume.extra['namespace']
-        machines = volume.cloud.ctl.compute.list_machines()
-        to_attach=[]
-        for machine in machines:
-            # might be a whole list?????
-            if 'pvc' in machine.extra:
-                if machine.extra['pvc'] == volume.name:
-                    to_attach.append(machine)
-        volume.attached_to.extend(to_attach)
     
     def _create_volume__prepare_args(self, kwargs):
         '''

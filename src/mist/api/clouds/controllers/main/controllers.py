@@ -572,6 +572,7 @@ class ClearCenterMainController(BaseMainController):
 class KubeVirtMainController(BaseMainController):
     provider = 'kubevirt'
     ComputeController = compute_ctls.KubeVirtComputeController
+    StorageController = storage_ctls.KubernetesStorageController
 
     def _update__preparse_kwargs(self, kwargs):
         host = kwargs.get('host', self.cloud.host)
