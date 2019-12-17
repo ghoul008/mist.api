@@ -404,13 +404,8 @@ class KubernetesStorageController(BaseStorageController):
 
     
     def _create_volume__prepare_args(self, kwargs):
-        '''
-        def create_volume(self, size, name, volumeMode='Filesystem',
-                      namespace='default',storageClassName=None,
-                      accessMode='ReadWriteOnce', matchLabels=None,
-                      matchExpressions=None):
-        '''
-        for param in ('name', 'size' ):
+               
+        for param in ('name', 'size', 'storageClassName' ):
             if not kwargs.get(param):
                 raise mist.api.exceptions.RequiredParameterMissingError(param)
         if 'volumeMode' in kwargs:

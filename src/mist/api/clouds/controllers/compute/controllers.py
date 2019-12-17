@@ -1936,12 +1936,12 @@ class KubeVirtComputeController(BaseComputeController):
         # FIXME: resolve circular import issues
         from mist.api.models import Volume
         volumes = Volume.objects.filter(cloud= self.cloud)
-        import ipdb; ipdb.set_trace()
         for volume in volumes:
             if 'pvc' in volume.extra:
                 if volume.extra['pvc']['name'] in pvcs:
                     if machine not in volume.attached_to:
                         volume.attached_to.append(machine)
+                        volume.save()
 
 
     def _list_sizes__get_cpu(self, size):
