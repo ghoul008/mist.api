@@ -353,6 +353,7 @@ class AlibabaStorageController(BaseStorageController):
 
 
 class PacketStorageController(BaseStorageController):
+
     def _create_volume__prepare_args(self, kwargs):
         # FIXME Imported here due to circular dependency issues.
         from mist.api.clouds.models import CloudLocation
@@ -404,11 +405,21 @@ class KubernetesStorageController(BaseStorageController):
 
     
     def _create_volume__prepare_args(self, kwargs):
-               
-        for param in ('name', 'size', 'storageClassName' ):
+        
+        for param in ('name', 'size', 'location', 'storage_class_name'):
             if not kwargs.get(param):
-                raise mist.api.exceptions.RequiredParameterMissingError(param)
+                raise RequiredParameterMissingError(param)
+
         if 'volumeMode' in kwargs:
             if kwargs['volumeMode'] not in {'Filesystem', 'Block'}:
                 raise ValueError("volumeMode can be either Filesysystem or Block")
+        # FIXME circular import
+        from mist.api.clouds.models import CloudLocation
+        try:
+            location = CloudLocation.objects.get(id=kwargs['location'])
+        except CloudLocation.DoesNotExist:
+            raise NotFoundError("Location with id '%s'." % kwargs['location'])
+       
+        kwargs['namespace'] = location.name
+        del kwargs['location']
         

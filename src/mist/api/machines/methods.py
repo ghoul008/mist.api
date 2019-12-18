@@ -124,6 +124,15 @@ def machine_name_validator(provider, name):
                 "machine name may only contain ASCII letters "
                 "or numbers, dashes and periods. Name should not "
                 "end with a dash")
+    elif provider == Provider.KUBEVIRT:
+        if not re.search(r'^(?:[a-z](?:[\.\-a-z0-9]{0,61}[a-z0-9])?)$', name):
+            raise MachineNameValidationError(
+                    "name must be 1-63 characters long, with the first "
+                    "character being a lowercase letter, and all following "
+                    "characters must be a dash, period, lowercase letter, "
+                    "or digit, except the last character, which cannot be "
+                    "a dash nor period."
+                )
     return name
 
 
@@ -433,6 +442,13 @@ def create_machine(auth_context, cloud_id, key_id, machine_name, location_id,
     elif conn.type == Provider.MAXIHOST:
         node = _create_machine_maxihost(conn, machine_name, image,
                                         size, location, public_key)
+    elif conn.type == Provider.KUBEVIRT:
+        network = networks if networks else None
+        node = _create_machine_kubevirt(conn, machine_name, image= image_name,
+                                        namespace=location_name,
+                                        disks = volumes,
+                                        memory=None, cpu=None,
+                                        network = network)
     else:
         raise BadRequestError("Provider unknown.")
 
@@ -1776,6 +1792,28 @@ def _create_machine_linode(conn, key_name, private_key, public_key,
             raise MachineCreationError("Linode, got exception %s" % e, e)
     return node
 
+def _create_machine_kubevirt(conn, machine_name, namespace, image, disks=None,
+                             memory=None, cpu=None,
+                             network = ['pod', 'masquerade', 'net1']):
+    """ disks is a `list` of `dict` with keys:
+        
+        - claimName (required, if a PVC exists it is enough)
+        (if a pvc needs to be created)
+        - size
+        - storageClass
+        - volumeMode (optional)
+        - accessMode (optional)"""
+    
+    network[2] = machine_name_validator(provider='kubevirt', name=network[2])
+       
+    
+    try: 
+        node = conn.create_node(name=machine_name, namespace=namespace,
+                                image=image, disks=disks, memory=memory,
+                                cpu=cpu, network=network)
+    except Exception as e:
+            raise MachineCreationError("KubeVirt, got exception {}".format(e))
+    return node
 
 def destroy_machine(user, cloud_id, machine_id):
     """Destroys a machine on a certain cloud.
