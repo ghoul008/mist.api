@@ -220,7 +220,7 @@ def create_machine(auth_context, cloud_id, key_id, machine_name, location_id,
     # For providers, which do not support pre-defined sizes, we expect `size`
     # to be a dict with all the necessary information regarding the machine's
     # size.
-    if cloud.ctl.provider in ('vsphere', 'onapp', 'libvirt', ):
+    if cloud.ctl.provider in ('vsphere', 'onapp', 'libvirt', 'kubevirt'):
         if not isinstance(size, dict):
             raise BadRequestError('Expected size to be a dict.')
         size_id = 'custom'
@@ -443,11 +443,13 @@ def create_machine(auth_context, cloud_id, key_id, machine_name, location_id,
         node = _create_machine_maxihost(conn, machine_name, image,
                                         size, location, public_key)
     elif conn.type == Provider.KUBEVIRT:
+        import ipdb; ipdb.set_trace()
         network = networks if networks else None
-        node = _create_machine_kubevirt(conn, machine_name, image= image_name,
-                                        namespace=location_name,
+        image = image.id.strip()
+        node = _create_machine_kubevirt(conn, machine_name, image= image,
+                                        namespace=location.name,
                                         disks = volumes,
-                                        memory=None, cpu=None,
+                                        memory=size_ram, cpu=size_cpu,
                                         network = network)
     else:
         raise BadRequestError("Provider unknown.")
@@ -1804,16 +1806,18 @@ def _create_machine_kubevirt(conn, machine_name, namespace, image, disks=None,
         - storageClass
         - volumeMode (optional)
         - accessMode (optional)"""
-    
-    network[2] = machine_name_validator(provider='kubevirt', name=network[2])
-       
-    
+
+    if network:
+        if len(network) != 3:
+            raise TypeError("Network must have 3 elements, [network_type, interface, name]")
+        network[2] = machine_name_validator(provider='kubevirt', name=network[2])
+    import ipdb; ipdb.set_trace()    
     try: 
         node = conn.create_node(name=machine_name, namespace=namespace,
                                 image=image, disks=disks, memory=memory,
                                 cpu=cpu, network=network)
     except Exception as e:
-            raise MachineCreationError("KubeVirt, got exception {}".format(e))
+            raise MachineCreationError("KubeVirt, got exception {}".format(e), e)
     return node
 
 def destroy_machine(user, cloud_id, machine_id):

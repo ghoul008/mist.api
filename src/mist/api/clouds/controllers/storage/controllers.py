@@ -405,7 +405,7 @@ class KubernetesStorageController(BaseStorageController):
 
     
     def _create_volume__prepare_args(self, kwargs):
-        
+        import ipdb; ipdb.set_trace()
         for param in ('name', 'size', 'location', 'storage_class_name'):
             if not kwargs.get(param):
                 raise RequiredParameterMissingError(param)
@@ -422,4 +422,10 @@ class KubernetesStorageController(BaseStorageController):
        
         kwargs['namespace'] = location.name
         del kwargs['location']
-        
+
+    def list_storage_classes(self):
+        try:
+            sc = self.cloud.ctl.compute.connection.list_storage_classes()
+            return sc    
+        except Exception as e:
+            raise

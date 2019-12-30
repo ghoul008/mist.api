@@ -380,3 +380,6 @@ class BaseStorageController(BaseController):
         raise mist.api.exceptions.VolumeNotFoundError(
             'Volume %s with external_id %s' % (volume.name, volume.external_id)
         )
+
+    def list_storage_classes(self):
+        raise NotImplementedError()

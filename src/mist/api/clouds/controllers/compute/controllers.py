@@ -1878,10 +1878,8 @@ class KubeVirtComputeController(BaseComputeController):
                                                  verify=verify)
         # token bearer authentication
         elif self.cloud.token_bearer_auth:
-            key_temp_file = tempfile.NamedTemporaryFile(delete=False)
-            key_temp_file.write(self.cloud.key_file.encode())
-            key_temp_file.close()
-            key_file = key_temp_file.name
+            if not key_file:
+                raise ValueError("Missing the token, please provide it.")
 
             return get_driver(Provider.KUBEVIRT)(secure=True,
                                                  host=host,
