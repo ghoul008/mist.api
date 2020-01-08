@@ -23,6 +23,8 @@ class ShellHubWorker(mist.api.hub.main.HubWorker):
         super(ShellHubWorker, self).__init__(*args, **kwargs)
         self.shell = None
         self.channel = None
+        for k,v in self.params.items():
+            log.info("FUCKING HERE I HAVE DATA {} with VALUE {}".format(k, v))
         for key in ('owner_id', 'cloud_id', 'machine_id', 'host',
                     'columns', 'rows'):
             # HACK:FIXME: Temporary fix for Orchestration shell.
@@ -49,21 +51,31 @@ class ShellHubWorker(mist.api.hub.main.HubWorker):
             log.error("%s: Can't call on_connect twice.", self.lbl)
             return
         data = self.params
-        self.provider = data.get('provider', '')
+        self.provider = data.get('provider','')
         try:
-            self.shell = mist.api.shell.Shell(data['host'])
-            key_id, ssh_user = self.shell.autoconfigure(
-                self.owner, data['cloud_id'], data['machine_id']
-            )
-        except Exception as exc:
             if self.provider == 'docker':
+                log.info("HERE 111111")
                 self.shell = mist.api.shell.Shell(data['host'],
                                                   provider='docker')
                 key_id, ssh_user = self.shell.autoconfigure(
                     self.owner, data['cloud_id'], data['machine_id'],
                     job_id=data['job_id'],
                 )
+            elif self.provider == "kubevirt":
+                log.info("HERE 22222")
+                self.shell = mist.api.shell.Shell(data['host'],
+                                                  provider='kubevirt')
+                key_id, ssh_user = self.shell.autoconfigure(
+                    self.owner, data['cloud_id'], data['machine_id']
+                )
             else:
+                log.info("HERE 3333")
+                self.shell = mist.api.shell.Shell(data['host'])
+                key_id, ssh_user = self.shell.autoconfigure(
+                    self.owner, data['cloud_id'], data['machine_id']
+                )
+        except Exception as exc:
+
                 log.warning("%s: Couldn't connect with SSH, error %r.",
                             self.lbl, exc)
                 if isinstance(exc,
@@ -82,6 +94,8 @@ class ShellHubWorker(mist.api.hub.main.HubWorker):
 
     def on_data(self, body, msg):
         """Received data that must be forwarded to shell's stdin"""
+        if self.provider == 'kubevirt':
+            self.shell.send(body)
         self.channel.send(body.encode('utf-8', 'ignore'))
 
     def on_resize(self, body, msg):
@@ -133,6 +147,10 @@ class ShellHubWorker(mist.api.hub.main.HubWorker):
 
 class LoggingShellHubWorker(ShellHubWorker):
     def __init__(self, *args, **kwargs):
+        for k in args:
+            log.info("THE ARGS ALSO HAVE value {}".format(k))
+        for k,v in kwargs.items():
+            log.info("THE KEYWORDARGS ALSO HAVE KEY {} with value {}".format(k, v))
         super(LoggingShellHubWorker, self).__init__(*args, **kwargs)
         self.capture = []
         self.capture_started_at = 0

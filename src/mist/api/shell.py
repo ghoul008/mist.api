@@ -11,6 +11,7 @@ import _thread
 import ssl
 import tempfile
 import logging
+import base64
 
 from time import sleep
 from io import StringIO
@@ -504,6 +505,189 @@ class DockerShell(DockerWebSocket):
 
             return tempkey.name, tempcert.name
 
+class KubernetesWebSocket(object):
+    """
+    Base WebSocket class inherited by DockerShell
+    """
+    def __init__(self):
+        self.ws = websocket.WebSocket()
+        self.protocol = "wss"
+        self.uri = ""
+        self.sslopt = {}
+        self.buffer = b""
+        self.header = None
+
+    def connect(self):
+        try:
+            if self.header is not None:
+                self.ws.connect(self.uri, header=self.header)
+            else:
+                self.ws.connect(self.uri)
+        except websocket.WebSocketException:
+            raise MachineUnauthorizedError()
+
+    def send(self, cmd):
+        command = bytearray(b'\x00') #stdin is 0 for k8s
+        command.extend(map(ord, cmd))
+        self.ws.send(command, opcode=2)
+    
+    def recv(self):
+        pass
+    
+    def disconnect(self, **kwargs):
+        try:
+            self.ws.send_close()
+            self.ws.close()
+        except:
+            pass
+
+    def _wrap_command(self, cmd):
+        if cmd[-1] is not "\n":
+            cmd = cmd + "\n"
+        return cmd
+
+    def command(self, cmd):
+        def _on_message(ws, message):
+            self.buffer = self.buffer + message
+
+        def _on_close(ws):
+            log.error('Closing the socket.')
+            ws.close()
+            self.ws.close()
+
+        def _on_error(ws, error):
+            log.error("Got Websocker error: %s" % error)
+
+        def _on_open(ws):            
+            def run(*args):
+                sleep(1)
+                ws.send(self.cmd)
+                sleep(1)
+            _thread.start_new_thread(run, ())
+
+        self.cmd = self._wrap_command(cmd)
+        log.error(self.cmd)
+        if self.header is not None:
+            self.ws = websocket.WebSocketApp(self.uri, header=self.header,
+                                             on_message=_on_message,
+                                             on_error=_on_error,
+                                             on_close=_on_close)
+        else:
+            self.ws = websocket.WebSocketApp(self.uri,
+                                            on_message=_on_message,
+                                            on_error=_on_error,
+                                            on_close=_on_close)
+
+        log.error(self.ws)
+        self.ws.on_open =_on_open
+        if self.sslopt:
+            self.ws.run_forever(sslopt=self.sslopt, ping_interval=10 , ping_timeout=5)
+        else:
+            self.ws.run_forever(ping_interval=10 , ping_timeout=5)
+        self.ws.close()
+        retval = 0
+        output = self.buffer #.split("\n")[1:-1]
+        return retval, output
+
+        
+    
+    def __del__(self):
+        self.disconnect()
+
+class KubernetesShell(KubernetesWebSocket):
+    """
+    Kubernetes shell into a pod.
+    Can be used by KubeVirt to get a shell to a vm.
+    """
+    def __init__(self):
+        self.host = ""
+        self.port = "6443"
+        super(KubernetesShell, self).__init__()
+    
+    def autoconfigure(self, owner, cloud_id, machine_id, **kwargs):
+        shell_type = 'interactive'
+        config_method = '%s_shell' % shell_type
+
+        getattr(self, config_method)(owner,
+                                     cloud_id=cloud_id, machine_id=machine_id)
+        self.connect()
+        # This is for compatibility purposes with the ParamikoShell
+        return None, None
+    
+    def interactive_shell(self, owner, cloud_id, machine_id):
+    
+        machine, cloud = \
+            self.get_kubernetes_endpoint(machine_id, cloud_id)
+        log.info("Autoconfiguring DockerShell for machine %s:%s",
+                 cloud.id, machine_id)
+
+        self.uri = self.build_uri(machine, cloud=cloud)
+    
+    def build_uri(self, machine, cloud=None):
+        """
+        SSL is always enabled in K8s. Because it uses its own CA it migth be required to skip
+        the CA validation.
+        """
+        if cloud is None:
+            cloud = machine.cloud
+        self.host = cloud.host
+        self.port = cloud.port
+        self.protocol = 'wss'
+        ssl_key, ssl_cert, ssl_ca_cert = self.ssl_credentials(cloud)
+        if ssl_ca_cert:
+            self.sslopt = {
+                'ca_certs': ssl_ca_cert,
+            }
+        else:
+            self.sslopt = {'cert_reqs': ssl.CERT_NONE}
+
+        if  ssl_key is not None and ssl_cert is not None:
+            self.sslopt['keyfile'] = ssl_key
+            self.sslopt['certfile'] = ssl_cert
+
+            self.ws = websocket.WebSocket(sslopt=self.sslopt)
+
+        elif cloud and cloud.username and cloud.password:
+            usr = cloud.username.encode('utf-8')
+            pwd = cloud.password.encode('utf-8')
+            auth = usr + b':' + pwd
+            auth = base64.b64encode(auth).decode('ascii')
+            header = 'Authorization: Basic {}'.format(auth)
+            self.ws = websocket.WebSocket(sslopt=self.sslopt, header=header)
+        
+        else:
+            raise TypeError("Not Implemented yet, token bearer!")
+
+        uri = ("wss://{host}:{port}/api/v1/namespaces/{namespace}/pods/{pod}/"
+               "exec?command=%2Fbin%2Fbash&container=compute&stdin=true&stderr=true&stdout=true&"
+               "tty=true".format(host=self.host, port= self.port,
+                                 namespace=machine.extra['namespace'],
+                                 pod=machine.extra['pod']['name']))
+        
+        return uri
+
+    def get_kubernetes_endpoint(self, machine_id, cloud_id):
+
+        machine = Machine.objects.get(id=machine_id)
+        cloud = Cloud.objects.get(id=cloud_id)
+        return machine, cloud
+
+    @staticmethod
+    def ssl_credentials(cloud=None):
+        if cloud:
+            _key, _cert = cloud.key_file, cloud.cert_file
+            _ca_cert = cloud.ca_cert_file
+            tempkey = tempfile.NamedTemporaryFile(delete=False)
+            with open(tempkey.name, 'w') as f:
+                f.write(_key)
+            tempcert = tempfile.NamedTemporaryFile(delete=False)
+            with open(tempcert.name, 'w') as f:
+                f.write(_cert)
+            tempca_cert = tempfile.NamedTemporaryFile(delete=False)
+            with open(tempca_cert.name, 'w') as f:
+                f.write(_ca_cert)
+
+            return tempkey.name, tempcert.name, tempca_cert.name
 
 class Shell(object):
     """Proxy Shell Class to distinguish between Docker or Paramiko Shell
@@ -520,14 +704,17 @@ class Shell(object):
                                  Connection to Docker containers
         :return:
         """
-
+        log.info("THIS IS ALL I GET: host:{}, provider:{}, username:{}, key:{}, password:{}, cert_file:{}, port:{}, enforce_paramiko:{}".format(
+            host,provider,username,key,password,cert_file,port,enforce_paramiko))
         self._shell = None
         self.host = host
         self.channel = None
         self.ssh = None
-
+        log.info("MY PROVIDER IS!!!!::: {}".format(provider))
         if provider == 'docker' and not enforce_paramiko:
             self._shell = DockerShell(host)
+        elif provider == 'kubevirt' and not enforce_paramiko:
+            self._shell = KubernetesShell()
         else:
             self._shell = ParamikoShell(host, username=username, key=key,
                                         password=password, cert_file=cert_file,
@@ -544,6 +731,8 @@ class Shell(object):
         elif isinstance(self._shell, DockerShell):
             return self._shell.autoconfigure(owner, cloud_id, machine_id,
                                              **kwargs)
+        elif isinstance(self._shell, KubernetesShell):
+            return self._shell.autoconfigure(owner, cloud_id, machine_id)
 
     def connect(self, username, key=None, password=None, cert_file=None,
                 port=22):
@@ -552,17 +741,27 @@ class Shell(object):
                                 cert_file=cert_file, port=port)
         elif isinstance(self._shell, DockerShell):
             self._shell.connect()
+        elif isinstance(self._shell, KubernetesShell):
+            self._shell.connect()
 
     def invoke_shell(self, term='xterm', cols=None, rows=None):
         if isinstance(self._shell, ParamikoShell):
             return self._shell.ssh.invoke_shell(term, cols, rows)
         elif isinstance(self._shell, DockerShell):
             return self._shell.ws
+        elif isinstance(self._shell, KubernetesShell):
+            return self._shell.ws
+    
+    def send(self, body):
+        if isinstance(self._shell, KubernetesShell):
+            return self._shell.send(body)
 
     def recv(self, default=1024):
         if isinstance(self._shell, ParamikoShell):
             return self._shell.ssh.recv(default)
         elif isinstance(self._shell, DockerShell):
+            return self._shell.ws.recv()
+        elif isinstance(self._shell, KubernetesShell):
             return self._shell.ws.recv()
 
     def disconnect(self):
@@ -572,6 +771,8 @@ class Shell(object):
         if isinstance(self._shell, ParamikoShell):
             return self._shell.command(cmd, pty=pty)
         elif isinstance(self._shell, DockerShell):
+            return self._shell.command(cmd)
+        elif isinstance(self._shell, KubernetesShell):
             return self._shell.command(cmd)
 
     def command_stream(self, cmd):
