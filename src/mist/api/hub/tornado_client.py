@@ -22,8 +22,6 @@ class _HubTornadoConsumer(mist.api.amqp_tornado.Consumer):
     def __init__(self, uuid, exchange, worker_type, key, worker_kwargs,
                  actions_callback, ready_callback, lbl=''):
 
-        for k,v in worker_kwargs.items():
-            log.info("THE WORKER KWARGS ALSO HAVE KEY {} with value {}".format(k, v))
         self.uuid = uuid
         self.key = key
         self.worker_type = worker_type

@@ -23,8 +23,6 @@ class ShellHubWorker(mist.api.hub.main.HubWorker):
         super(ShellHubWorker, self).__init__(*args, **kwargs)
         self.shell = None
         self.channel = None
-        for k,v in self.params.items():
-            log.info("FUCKING HERE I HAVE DATA {} with VALUE {}".format(k, v))
         for key in ('owner_id', 'cloud_id', 'machine_id', 'host',
                     'columns', 'rows'):
             # HACK:FIXME: Temporary fix for Orchestration shell.
@@ -54,7 +52,6 @@ class ShellHubWorker(mist.api.hub.main.HubWorker):
         self.provider = data.get('provider','')
         try:
             if self.provider == 'docker':
-                log.info("HERE 111111")
                 self.shell = mist.api.shell.Shell(data['host'],
                                                   provider='docker')
                 key_id, ssh_user = self.shell.autoconfigure(
@@ -62,14 +59,12 @@ class ShellHubWorker(mist.api.hub.main.HubWorker):
                     job_id=data['job_id'],
                 )
             elif self.provider == "kubevirt":
-                log.info("HERE 22222")
                 self.shell = mist.api.shell.Shell(data['host'],
                                                   provider='kubevirt')
                 key_id, ssh_user = self.shell.autoconfigure(
                     self.owner, data['cloud_id'], data['machine_id']
                 )
             else:
-                log.info("HERE 3333")
                 self.shell = mist.api.shell.Shell(data['host'])
                 key_id, ssh_user = self.shell.autoconfigure(
                     self.owner, data['cloud_id'], data['machine_id']
@@ -147,10 +142,6 @@ class ShellHubWorker(mist.api.hub.main.HubWorker):
 
 class LoggingShellHubWorker(ShellHubWorker):
     def __init__(self, *args, **kwargs):
-        for k in args:
-            log.info("THE ARGS ALSO HAVE value {}".format(k))
-        for k,v in kwargs.items():
-            log.info("THE KEYWORDARGS ALSO HAVE KEY {} with value {}".format(k, v))
         super(LoggingShellHubWorker, self).__init__(*args, **kwargs)
         self.capture = []
         self.capture_started_at = 0

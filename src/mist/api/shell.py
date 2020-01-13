@@ -704,13 +704,10 @@ class Shell(object):
                                  Connection to Docker containers
         :return:
         """
-        log.info("THIS IS ALL I GET: host:{}, provider:{}, username:{}, key:{}, password:{}, cert_file:{}, port:{}, enforce_paramiko:{}".format(
-            host,provider,username,key,password,cert_file,port,enforce_paramiko))
         self._shell = None
         self.host = host
         self.channel = None
         self.ssh = None
-        log.info("MY PROVIDER IS!!!!::: {}".format(provider))
         if provider == 'docker' and not enforce_paramiko:
             self._shell = DockerShell(host)
         elif provider == 'kubevirt' and not enforce_paramiko:

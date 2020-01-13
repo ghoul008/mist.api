@@ -1811,7 +1811,12 @@ def _create_machine_kubevirt(conn, machine_name, namespace, image, disks=None,
         if len(network) != 3:
             raise TypeError("Network must have 3 elements, [network_type, interface, name]")
         network[2] = machine_name_validator(provider='kubevirt', name=network[2])
-    import ipdb; ipdb.set_trace()    
+
+    import ipdb; ipdb.set_trace()
+    for i in range(len(disks)):
+        if disks[i][disk_type] == "Peristent Volume":
+            disks[i][disk_type] = "persistentVolumeClaim"
+        
     try: 
         node = conn.create_node(name=machine_name, namespace=namespace,
                                 image=image, disks=disks, memory=memory,
