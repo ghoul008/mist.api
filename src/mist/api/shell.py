@@ -516,6 +516,7 @@ class KubernetesWebSocket(object):
         self.sslopt = {}
         self.buffer = b""
         self.header = None
+        self.buflen = 1
 
     def connect(self):
         try:
@@ -532,7 +533,7 @@ class KubernetesWebSocket(object):
         self.ws.send(command, opcode=2)
     
     def recv(self):
-        pass
+        return self.ws._recv(self.buflen)
     
     def disconnect(self, **kwargs):
         try:
@@ -603,14 +604,26 @@ class KubernetesShell(KubernetesWebSocket):
         self.host = ""
         self.port = "6443"
         super(KubernetesShell, self).__init__()
-    
+
+    def resize(self, columns, rows):
+        if not self.ws.connected:
+            return
+        command = "printf '\e[8;{};{}t'\r".format(rows,columns)
+        self.send(command)
+        self.send('history -c\r')
+        command = "clear\r"
+        self.send(command)
+
     def autoconfigure(self, owner, cloud_id, machine_id, **kwargs):
         shell_type = 'interactive'
         config_method = '%s_shell' % shell_type
 
         getattr(self, config_method)(owner,
                                      cloud_id=cloud_id, machine_id=machine_id)
-        self.connect()
+        try:
+            self.connect()
+        except Exception as e:
+            raise
         # This is for compatibility purposes with the ParamikoShell
         return None, None
     
@@ -618,7 +631,7 @@ class KubernetesShell(KubernetesWebSocket):
     
         machine, cloud = \
             self.get_kubernetes_endpoint(machine_id, cloud_id)
-        log.info("Autoconfiguring DockerShell for machine %s:%s",
+        log.info("Autoconfiguring KubernetesShell for machine %s:%s",
                  cloud.id, machine_id)
 
         self.uri = self.build_uri(machine, cloud=cloud)
@@ -663,7 +676,6 @@ class KubernetesShell(KubernetesWebSocket):
                "tty=true".format(host=self.host, port= self.port,
                                  namespace=machine.extra['namespace'],
                                  pod=machine.extra['pod']['name']))
-        
         return uri
 
     def get_kubernetes_endpoint(self, machine_id, cloud_id):

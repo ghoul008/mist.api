@@ -405,10 +405,25 @@ class KubernetesStorageController(BaseStorageController):
 
     
     def _create_volume__prepare_args(self, kwargs):
-        import ipdb; ipdb.set_trace()
-        for param in ('name', 'size', 'location', 'storage_class_name'):
+        for param in ('name', 'size',):
             if not kwargs.get(param):
                 raise RequiredParameterMissingError(param)
+        if not kwargs['dynamic']:
+            if not kwargs.get('volume_params'):
+                msg = """Parameter volume_params must be a populated 
+                dictionary/object with the coresponding 
+                parameter/value pairs depending on volume type.
+                If you are not sure please enable dynamic creation."""
+                raise RequiredParameterMissingError(msg)
+            if not kwargs.get('volume_type'):
+                msg = """A volume_type must be specified from the supported volume 
+                types by kubernetes.
+                If you are not sure enable dynamic volume creation."""
+                raise RequiredParameterMissingError(msg)
+        else:
+            for param in ('location', 'storage_class_name'):
+                if not kwargs.get(param):
+                    raise RequiredParameterMissingError(param)
 
         if 'volumeMode' in kwargs:
             if kwargs['volumeMode'] not in {'Filesystem', 'Block'}:

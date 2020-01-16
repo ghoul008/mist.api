@@ -37,6 +37,7 @@ from mist.api.exceptions import InternalServerError
 from mist.api.exceptions import NotFoundError
 from mist.api.exceptions import VolumeNotFoundError
 from mist.api.exceptions import NetworkNotFoundError
+from mist.api.exceptions import RequiredParameterMissingError
 
 from mist.api.helpers import get_temp_file
 
@@ -443,7 +444,6 @@ def create_machine(auth_context, cloud_id, key_id, machine_name, location_id,
         node = _create_machine_maxihost(conn, machine_name, image,
                                         size, location, public_key)
     elif conn.type == Provider.KUBEVIRT:
-        import ipdb; ipdb.set_trace()
         network = networks if networks else None
         image = image.id.strip()
         node = _create_machine_kubevirt(conn, machine_name, image= image,
@@ -1798,25 +1798,41 @@ def _create_machine_linode(conn, key_name, private_key, public_key,
 def _create_machine_kubevirt(conn, machine_name, namespace, image, disks=None,
                              memory=None, cpu=None,
                              network = ['pod', 'masquerade', 'net1']):
-    """ disks is a `list` of `dict` with keys:
+    """
+    disks is either an existing volume that can be or not bound.
+    If it is not it must be bound first.
         
-        - claimName (required, if a PVC exists it is enough)
-        (if a pvc needs to be created)
-        - size
-        - storageClass
-        - volumeMode (optional)
-        - accessMode (optional)"""
+    """
+    if disks:
+        # check first for unbound
+        # FIXME circular imports
+        from mist.api.volumes.models import Volume
+        for disk in disks:
+            if disk.get('volume_id') and len(disk)==1:
+                volume = Volume.objects.get(id=disk['volume_id'])
+                if not volume.extra.get('is_bound'):
+                    libcloud_vol = conn._bind_volume(volume, namespace=namespace)
+                    if not libcloud_vol.extra['is_bound']:
+                        msg = ("The volume could not be bound. "
+                                "Try picking another volume.")
+                        raise MachineCreationError(msg)
+                disk['disk_type'] = "persistentVolumeClaim"
+                disk['claim_name'] = libcloud_vol.extra['pvc']['name']
+            else:
+                # creating a new volume
+                for param in {'name', 'size','storage_class_name'}:
+                    if not disk.get(param):
+                        raise RequiredParameterMissingError(param)
+                    
+                disk['disk_type']="persistentVolumeClaim"
+                disk['claim_name']=disk['name']
+                del disk['name']
+
 
     if network:
         if len(network) != 3:
             raise TypeError("Network must have 3 elements, [network_type, interface, name]")
         network[2] = machine_name_validator(provider='kubevirt', name=network[2])
-
-    import ipdb; ipdb.set_trace()
-    for i in range(len(disks)):
-        if disks[i][disk_type] == "Peristent Volume":
-            disks[i][disk_type] = "persistentVolumeClaim"
-        
     try: 
         node = conn.create_node(name=machine_name, namespace=namespace,
                                 image=image, disks=disks, memory=memory,

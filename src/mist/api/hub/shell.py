@@ -70,7 +70,6 @@ class ShellHubWorker(mist.api.hub.main.HubWorker):
                     self.owner, data['cloud_id'], data['machine_id']
                 )
         except Exception as exc:
-
                 log.warning("%s: Couldn't connect with SSH, error %r.",
                             self.lbl, exc)
                 if isinstance(exc,
@@ -101,7 +100,10 @@ class ShellHubWorker(mist.api.hub.main.HubWorker):
                 log.info("%s: Resizing shell to (%s, %s).",
                          self.lbl, columns, rows)
                 try:
-                    self.channel.resize_pty(columns, rows)
+                    if self.provider == 'kubevirt':
+                        self.shell._shell.resize(columns,rows)
+                    else:
+                        self.channel.resize_pty(columns, rows)
                     return columns, rows
                 except Exception as exc:
                     log.warning("%s: Error resizing shell to (%s, %s): %r.",

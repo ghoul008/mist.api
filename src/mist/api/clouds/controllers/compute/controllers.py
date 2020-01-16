@@ -1925,7 +1925,17 @@ class KubeVirtComputeController(BaseComputeController):
         return self.connection.ex_stop_node(machine_libcloud)
 
     def _destroy_machine(self, machine, machine_libcloud):
-        return self.connection.destroy_node(machine_libcloud)
+        res = self.connection.destroy_node(machine_libcloud)
+        if res:
+            if machine.extra.get('pvcs'):
+                # FIXME: resolve circular import issues
+                from mist.api.models import Volume
+                volumes = Volume.objects.filter(cloud= self.cloud)
+                for volume in volumes:
+                    if machine.id in volume.attached_to:
+                        volume.attached_to.remove(machine.id)
+
+
 
     def _list_machines__postparse_machine(self, machine, machine_libcloud):
         if not machine_libcloud.extra['pvcs']:
