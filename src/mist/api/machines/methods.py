@@ -447,7 +447,7 @@ def create_machine(auth_context, cloud_id, key_id, machine_name, location_id,
         network = networks if networks else None
         image = image.id.strip()
         node = _create_machine_kubevirt(conn, machine_name, image= image,
-                                        namespace=location.name,
+                                        location=location,
                                         disks = volumes,
                                         memory=size_ram, cpu=size_cpu,
                                         network = network)
@@ -1795,7 +1795,7 @@ def _create_machine_linode(conn, key_name, private_key, public_key,
             raise MachineCreationError("Linode, got exception %s" % e, e)
     return node
 
-def _create_machine_kubevirt(conn, machine_name, namespace, image, disks=None,
+def _create_machine_kubevirt(conn, machine_name, location, image, disks=None,
                              memory=None, cpu=None,
                              network = ['pod', 'masquerade', 'net1']):
     """
@@ -1834,9 +1834,10 @@ def _create_machine_kubevirt(conn, machine_name, namespace, image, disks=None,
             raise TypeError("Network must have 3 elements, [network_type, interface, name]")
         network[2] = machine_name_validator(provider='kubevirt', name=network[2])
     try: 
-        node = conn.create_node(name=machine_name, namespace=namespace,
-                                image=image, disks=disks, memory=memory,
-                                cpu=cpu, network=network)
+        node = conn.create_node(name=machine_name, image=image,
+                                location=location,
+                                ex_disks=disks, ex_memory=memory,
+                                ex_cpu=cpu, ex_network=network)
     except Exception as e:
             raise MachineCreationError("KubeVirt, got exception {}".format(e), e)
     return node

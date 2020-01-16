@@ -415,32 +415,45 @@ class KubernetesStorageController(BaseStorageController):
                 parameter/value pairs depending on volume type.
                 If you are not sure please enable dynamic creation."""
                 raise RequiredParameterMissingError(msg)
+            else:
+                kwargs['ex_volume_params'] = kwargs.pop('volume_params')
             if not kwargs.get('volume_type'):
                 msg = """A volume_type must be specified from the supported volume 
                 types by kubernetes.
                 If you are not sure enable dynamic volume creation."""
                 raise RequiredParameterMissingError(msg)
+            
+                
         else:
             for param in ('location', 'storage_class_name'):
                 if not kwargs.get(param):
                     raise RequiredParameterMissingError(param)
+            kwargs['ex_storage_class_name'] = kwargs.pop('storage_class_name')
 
-        if 'volumeMode' in kwargs:
-            if kwargs['volumeMode'] not in {'Filesystem', 'Block'}:
-                raise ValueError("volumeMode can be either Filesysystem or Block")
-        # FIXME circular import
+        if 'volume_type' in kwargs:
+            kwargs['ex_volume_type'] = kwargs.pop('volume_type')
+        if 'volume_mode' in kwargs:
+            if kwargs['volume_mode'] not in {'Filesystem', 'Block'}:
+                raise ValueError("volume_mode can be either Filesysystem or Block")
+            kwargs['ex_volume_mode'] = kwargs.pop('volume_mode')
+        if 'access_mode' in kwargs:
+            kwargs['ex_access_mode'] = kwargs.pop('access_mode')
+        if 'reclaim_policy' in kwargs:
+            kwargs['ex_reclaim_policy'] = kwargs.pop('reclaim_policy')
+        kwargs['ex_dynamic'] = kwargs.pop('dynamic')
+        # FIXME circular imports
         from mist.api.clouds.models import CloudLocation
+        if not kwargs.get('location'):
+            raise RequiredParameterMissingError('location')
         try:
-            location = CloudLocation.objects.get(id=kwargs['location'])
+            location = CloudLocation.objects.get(id=kwargs['location'], missing_since=None)
+            kwargs['location'] = location
         except CloudLocation.DoesNotExist:
             raise NotFoundError("Location with id '%s'." % kwargs['location'])
-       
-        kwargs['namespace'] = location.name
-        del kwargs['location']
 
     def list_storage_classes(self):
         try:
-            sc = self.cloud.ctl.compute.connection.list_storage_classes()
+            sc = self.cloud.ctl.compute.connection.ex_list_storage_classes()
             return sc    
         except Exception as e:
             raise

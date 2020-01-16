@@ -1919,10 +1919,10 @@ class KubeVirtComputeController(BaseComputeController):
         return self.connection.reboot_node(machine_libcloud)
 
     def _start_machine(self, machine, machine_libcloud):
-        return self.connection.ex_start_node(machine_libcloud)
+        return self.connection.start_node(machine_libcloud)
 
     def _stop_machine(self, machine, machine_libcloud):
-        return self.connection.ex_stop_node(machine_libcloud)
+        return self.connection.stop_node(machine_libcloud)
 
     def _destroy_machine(self, machine, machine_libcloud):
         res = self.connection.destroy_node(machine_libcloud)
@@ -1943,7 +1943,7 @@ class KubeVirtComputeController(BaseComputeController):
         pvcs = machine_libcloud.extra['pvcs']
         # FIXME: resolve circular import issues
         from mist.api.models import Volume
-        volumes = Volume.objects.filter(cloud= self.cloud)
+        volumes = Volume.objects.filter(cloud= self.cloud, missing_since=None)
         for volume in volumes:
             if 'pvc' in volume.extra:
                 if volume.extra['pvc']['name'] in pvcs:
