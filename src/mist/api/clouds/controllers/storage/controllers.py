@@ -266,6 +266,17 @@ class AzureArmStorageController(BaseStorageController):
             raise RequiredParameterMissingError('resource_group')
         if not kwargs.get('location'):
             raise RequiredParameterMissingError('location')
+
+        # FIXME Imported here due to circular dependency issues.
+        from mist.api.clouds.models import CloudLocation
+        try:
+            location = CloudLocation.objects.get(id=kwargs['location'])
+        except CloudLocation.DoesNotExist:
+            raise NotFoundError("Location with id '%s'." % kwargs['location'])
+        node_location = NodeLocation(id=location.external_id,
+                                     name=location.name,
+                                     country=location.country, driver=None)
+        kwargs['location'] = node_location
         resource_group = kwargs.pop('resource_group')
         conn = self.cloud.ctl.compute.connection
         resource_groups = conn.ex_list_resource_groups()
@@ -279,25 +290,14 @@ class AzureArmStorageController(BaseStorageController):
         if ex_resource_group is None:
             try:
                 conn.ex_create_resource_group(resource_group,
-                                              kwargs.get('location'))
+                                              node_location)
                 ex_resource_group = resource_group
                 # add delay cause sometimes the group is not yet ready
                 time.sleep(5)
             except Exception as exc:
                 raise LibcloudError("Couldn't create resource group. \
                     %s" % exc)
-
         kwargs['ex_resource_group'] = ex_resource_group
-        # FIXME Imported here due to circular dependency issues.
-        from mist.api.clouds.models import CloudLocation
-        try:
-            location = CloudLocation.objects.get(id=kwargs['location'])
-        except CloudLocation.DoesNotExist:
-            raise NotFoundError("Location with id '%s'." % kwargs['location'])
-        node_location = NodeLocation(id=location.external_id,
-                                     name=location.name,
-                                     country=location.country, driver=None)
-        kwargs['location'] = node_location
         account_type = kwargs.pop('storage_account_type', 'Standard_LRS')
         kwargs['ex_storage_account_type'] = account_type
 
@@ -401,29 +401,27 @@ class PacketStorageController(BaseStorageController):
                           machine_id)
 
 
-class KubernetesStorageController(BaseStorageController):    
+class KubernetesStorageController(BaseStorageController):
 
-    
     def _create_volume__prepare_args(self, kwargs):
         for param in ('name', 'size',):
             if not kwargs.get(param):
                 raise RequiredParameterMissingError(param)
         if not kwargs['dynamic']:
             if not kwargs.get('volume_params'):
-                msg = """Parameter volume_params must be a populated 
-                dictionary/object with the coresponding 
+                msg = """Parameter volume_params must be a populated
+                dictionary/object with the coresponding
                 parameter/value pairs depending on volume type.
                 If you are not sure please enable dynamic creation."""
                 raise RequiredParameterMissingError(msg)
             else:
                 kwargs['ex_volume_params'] = kwargs.pop('volume_params')
             if not kwargs.get('volume_type'):
-                msg = """A volume_type must be specified from the supported volume 
-                types by kubernetes.
+                msg = """A volume_type must be specified from the
+                supported volume types by kubernetes.
                 If you are not sure enable dynamic volume creation."""
                 raise RequiredParameterMissingError(msg)
-            
-                
+
         else:
             for param in ('location', 'storage_class_name'):
                 if not kwargs.get(param):
@@ -434,7 +432,8 @@ class KubernetesStorageController(BaseStorageController):
             kwargs['ex_volume_type'] = kwargs.pop('volume_type')
         if 'volume_mode' in kwargs:
             if kwargs['volume_mode'] not in {'Filesystem', 'Block'}:
-                raise ValueError("volume_mode can be either Filesysystem or Block")
+                raise ValueError("volume_mode can be either "
+                                 "Filesysystem or Block.")
             kwargs['ex_volume_mode'] = kwargs.pop('volume_mode')
         if 'access_mode' in kwargs:
             kwargs['ex_access_mode'] = kwargs.pop('access_mode')
@@ -446,7 +445,8 @@ class KubernetesStorageController(BaseStorageController):
         if not kwargs.get('location'):
             raise RequiredParameterMissingError('location')
         try:
-            location = CloudLocation.objects.get(id=kwargs['location'], missing_since=None)
+            location = CloudLocation.objects.get(id=kwargs['location'],
+                                                 missing_since=None)
             kwargs['location'] = location
         except CloudLocation.DoesNotExist:
             raise NotFoundError("Location with id '%s'." % kwargs['location'])
@@ -454,6 +454,6 @@ class KubernetesStorageController(BaseStorageController):
     def list_storage_classes(self):
         try:
             sc = self.cloud.ctl.compute.connection.ex_list_storage_classes()
-            return sc    
+            return sc
         except Exception as e:
             raise

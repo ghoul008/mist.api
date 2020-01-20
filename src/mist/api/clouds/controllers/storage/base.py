@@ -230,7 +230,6 @@ class BaseStorageController(BaseController):
         for param in ('size', ):
             if not kwargs.get(param):
                 raise mist.api.exceptions.RequiredParameterMissingError(param)
-        
 
         # Cloud-specific kwargs pre-processing.
         self._create_volume__prepare_args(kwargs)

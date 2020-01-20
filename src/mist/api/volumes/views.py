@@ -170,7 +170,9 @@ def create_volume(request):
 
     return volume.as_dict()
 
-@view_config(route_name='api_v1_storage_classes', request_method='GET', renderer='json')
+
+@view_config(route_name='api_v1_storage_classes', request_method='GET',
+             renderer='json')
 def list_storage_classes(request):
     """
     Tags: volumes
@@ -186,13 +188,9 @@ def list_storage_classes(request):
       type: string
     """
     auth_context = auth_context_from_request(request)
-
-    params = params_from_request(request)
-
     cloud_id = request.matchdict.get('cloud')
 
     if cloud_id:
-        cached = bool(params.get('cached', False))
         try:
             cloud = Cloud.objects.get(owner=auth_context.owner, id=cloud_id,
                                       deleted=None)
@@ -205,6 +203,7 @@ def list_storage_classes(request):
         raise BadRequestError()
 
     return storage_classes
+
 
 @view_config(route_name='api_v1_volume',
              request_method='DELETE', renderer='json')

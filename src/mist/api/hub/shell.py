@@ -49,14 +49,13 @@ class ShellHubWorker(mist.api.hub.main.HubWorker):
             log.error("%s: Can't call on_connect twice.", self.lbl)
             return
         data = self.params
-        self.provider = data.get('provider','')
+        self.provider = data.get('provider', '')
         try:
             if self.provider == 'docker':
                 self.shell = mist.api.shell.Shell(data['host'],
                                                   provider='docker')
                 key_id, ssh_user = self.shell.autoconfigure(
                     self.owner, data['cloud_id'], data['machine_id'],
-                    job_id=data['job_id'],
                 )
             elif self.provider == "kubevirt":
                 self.shell = mist.api.shell.Shell(data['host'],
@@ -101,7 +100,7 @@ class ShellHubWorker(mist.api.hub.main.HubWorker):
                          self.lbl, columns, rows)
                 try:
                     if self.provider == 'kubevirt':
-                        self.shell._shell.resize(columns,rows)
+                        self.shell._shell.resize(columns, rows)
                     else:
                         self.channel.resize_pty(columns, rows)
                     return columns, rows

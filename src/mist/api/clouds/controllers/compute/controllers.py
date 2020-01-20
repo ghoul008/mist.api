@@ -1835,6 +1835,7 @@ class ClearCenterComputeController(BaseComputeController):
     def list_locations(self, persist=True):
         return []
 
+<<<<<<< Updated upstream
 
 class KubeVirtComputeController(BaseComputeController):
 
@@ -1903,13 +1904,13 @@ class KubeVirtComputeController(BaseComputeController):
         else:
             msg = '''Necessary parameters for authentication are missing.
             Either a key_file/cert_file pair or a username/pass pair
-            or a bearer token.'''   
+            or a bearer token.'''
             raise ValueError(msg)
 
     def _list_machines__machine_actions(self, machine, machine_libcloud):
         super(KubeVirtComputeController,
-                self)._list_machines__machine_actions(
-                machine, machine_libcloud)
+              self)._list_machines__machine_actions(
+            machine, machine_libcloud)
         machine.actions.start = True
         machine.actions.stop = True
         machine.actions.reboot = True
@@ -1930,12 +1931,10 @@ class KubeVirtComputeController(BaseComputeController):
             if machine.extra.get('pvcs'):
                 # FIXME: resolve circular import issues
                 from mist.api.models import Volume
-                volumes = Volume.objects.filter(cloud= self.cloud)
+                volumes = Volume.objects.filter(cloud=self.cloud)
                 for volume in volumes:
                     if machine.id in volume.attached_to:
                         volume.attached_to.remove(machine.id)
-
-
 
     def _list_machines__postparse_machine(self, machine, machine_libcloud):
         if not machine_libcloud.extra['pvcs']:
@@ -1943,14 +1942,13 @@ class KubeVirtComputeController(BaseComputeController):
         pvcs = machine_libcloud.extra['pvcs']
         # FIXME: resolve circular import issues
         from mist.api.models import Volume
-        volumes = Volume.objects.filter(cloud= self.cloud, missing_since=None)
+        volumes = Volume.objects.filter(cloud=self.cloud, missing_since=None)
         for volume in volumes:
             if 'pvc' in volume.extra:
                 if volume.extra['pvc']['name'] in pvcs:
                     if machine not in volume.attached_to:
                         volume.attached_to.append(machine)
                         volume.save()
-
 
     def _list_sizes__get_cpu(self, size):
         cpu = int(size.extra.get('cpus') or 1)
@@ -1959,3 +1957,10 @@ class KubeVirtComputeController(BaseComputeController):
         elif cpu > 99:
             cpu = 1
         return cpu
+=======
+class kubevirtComputeController():
+
+    def __init__(self, verify = True,*args,**kwargs):
+        pass
+
+>>>>>>> Stashed changes
