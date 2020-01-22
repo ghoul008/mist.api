@@ -1835,7 +1835,6 @@ class ClearCenterComputeController(BaseComputeController):
     def list_locations(self, persist=True):
         return []
 
-<<<<<<< Updated upstream
 
 class KubeVirtComputeController(BaseComputeController):
 
@@ -1957,10 +1956,3 @@ class KubeVirtComputeController(BaseComputeController):
         elif cpu > 99:
             cpu = 1
         return cpu
-=======
-class kubevirtComputeController():
-
-    def __init__(self, verify = True,*args,**kwargs):
-        pass
-
->>>>>>> Stashed changes
