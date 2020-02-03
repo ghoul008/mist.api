@@ -568,7 +568,7 @@ class KubernetesShell(KubernetesWebSocket):
             return
         command = bytearray(b'\x01\033\133')
         command.extend(map(ord, '8;{};{}t\r'.format(rows, columns)))
-        self.ws.send(command,opcode=2)
+        self.ws.send(command, opcode=2)
         # self.send('history -c\r')
         # command = "clear\r"
         # self.send(command)
