@@ -5,6 +5,7 @@ import mongoengine as me
 import time
 import requests
 import datetime
+import json
 
 from random import randrange
 
@@ -38,6 +39,7 @@ from mist.api.exceptions import NotFoundError
 from mist.api.exceptions import VolumeNotFoundError
 from mist.api.exceptions import NetworkNotFoundError
 from mist.api.exceptions import RequiredParameterMissingError
+from mist.api.exceptions import MistNotImplementedError
 
 from mist.api.helpers import get_temp_file
 
@@ -164,6 +166,9 @@ def create_machine(auth_context, cloud_id, key_id, machine_name, location_id,
                    bare_metal=False, hourly=True,
                    softlayer_backend_vlan_id=None, machine_username='',
                    volumes=[], ip_addresses=[], expiration={},
+                   sec_group='', folder=None, datastore=None, vnfs=[],
+                   ephemeral=False, lxd_image_source=None,
+                   description='',
                    ):
     """Creates a new virtual machine on the specified cloud.
 
@@ -191,11 +196,12 @@ def create_machine(auth_context, cloud_id, key_id, machine_name, location_id,
     # post_script_id: id of a script that exists - for mist.core. If script_id
     # or monitoring are supplied, this will run after both finish
     # post_script_params: extra params, for post_script_id
+
     log.info('Creating machine %s on cloud %s' % (machine_name, cloud_id))
     cloud = Cloud.objects.get(owner=auth_context.owner,
                               id=cloud_id, deleted=None)
-    conn = connect_provider(cloud)
 
+    conn = connect_provider(cloud)
     machine_name = machine_name_validator(conn.type, machine_name)
     key = None
     if key_id:
@@ -220,7 +226,8 @@ def create_machine(auth_context, cloud_id, key_id, machine_name, location_id,
     # For providers, which do not support pre-defined sizes, we expect `size`
     # to be a dict with all the necessary information regarding the machine's
     # size.
-    if cloud.ctl.provider in ('vsphere', 'onapp', 'libvirt', 'kubevirt'):
+    if cloud.ctl.provider in ('vsphere', 'onapp', 'libvirt', 'lxd', 'gig_g8',
+                              'kubevirt'):
         if not isinstance(size, dict):
             raise BadRequestError('Expected size to be a dict.')
         size_id = 'custom'
@@ -327,6 +334,14 @@ def create_machine(auth_context, cloud_id, key_id, machine_name, location_id,
                 docker_port_bindings=docker_port_bindings,
                 docker_exposed_ports=docker_exposed_ports
             )
+    elif conn.type is Container_Provider.LXD:
+
+        node = _create_machine_lxd(conn=conn, machine_name=machine_name,
+                                   image=image, parameters=lxd_image_source,
+                                   start=True, cluster=None,
+                                   ephemeral=ephemeral,
+                                   size_cpu=size_cpu, size_ram=size_ram,
+                                   volumes=volumes, networks=networks)
     elif conn.type in [Provider.RACKSPACE_FIRST_GEN, Provider.RACKSPACE]:
         node = _create_machine_rackspace(conn, public_key, machine_name, image,
                                          size, location, user_data=cloud_init)
@@ -343,7 +358,8 @@ def create_machine(auth_context, cloud_id, key_id, machine_name, location_id,
                 break
         node = _create_machine_ec2(conn, key.name, public_key,
                                    machine_name, image, size, ec2_location,
-                                   subnet_id, cloud_init, volumes)
+                                   subnet_id, cloud_init, volumes,
+                                   sec_group=sec_group)
     elif conn.name == 'Aliyun ECS':
         node = _create_machine_aliyun(conn, key.name, public_key,
                                       machine_name, image, size, location,
@@ -366,6 +382,13 @@ def create_machine(auth_context, cloud_id, key_id, machine_name, location_id,
             location, bare_metal, cloud_init,
             hourly, softlayer_backend_vlan_id
         )
+    elif conn.type is Provider.GIG_G8:
+        node = create_machine_g8(
+            conn, machine_name, image, size_ram, size_cpu,
+            size_disk_primary, public_key, description, networks,
+            volumes, cloud_init
+        )
+        ssh_port = node.extra.get('ssh_port', 22)
     elif conn.type is Provider.ONAPP:
         node = _create_machine_onapp(
             conn, public_key,
@@ -406,7 +429,8 @@ def create_machine(auth_context, cloud_id, key_id, machine_name, location_id,
         size.extra['cpu'] = size_cpu
         size.disk = size_disk_primary
         node = _create_machine_vsphere(conn, machine_name, image,
-                                       size, location, networks)
+                                       size, location, networks, folder,
+                                       datastore)
     elif conn.type is Provider.LINODE and private_key:
         # FIXME: The orchestration UI does not provide all the necessary
         # parameters, thus we need to fetch the proper size and image objects.
@@ -434,7 +458,8 @@ def create_machine(auth_context, cloud_id, key_id, machine_name, location_id,
                                        disk_path=disk_path,
                                        networks=networks,
                                        public_key=public_key,
-                                       cloud_init=cloud_init)
+                                       cloud_init=cloud_init,
+                                       vnfs=vnfs)
     elif conn.type == Provider.PACKET:
         node = _create_machine_packet(conn, public_key, machine_name, image,
                                       size, location, cloud_init, cloud,
@@ -542,7 +567,7 @@ def create_machine(auth_context, cloud_id, key_id, machine_name, location_id,
         mist.api.tasks.post_deploy_steps.delay(
             auth_context.owner.id, cloud_id, node.id, monitoring,
             script=script, key_id=key_id, script_id=script_id,
-            script_params=script_params, job_id=job_id, job=job,
+            script_params=script_params, job_id=job_id, job=job, port=ssh_port,
             hostname=hostname, plugins=plugins, post_script_id=post_script_id,
             post_script_params=post_script_params, schedule=schedule,
         )
@@ -561,6 +586,57 @@ def create_machine(auth_context, cloud_id, key_id, machine_name, location_id,
         ret.update({'public_ips': [],
                     'private_ips': []})
     return ret
+
+
+def create_machine_g8(conn, machine_name, image, ram, cpu, disk,
+                      public_key, description, networks, volumes,
+                      cloud_init):
+    auth = None
+    ex_expose_ssh = False
+    if public_key:
+        key = public_key.replace('\n', '')
+        auth = NodeAuthSSHKey(pubkey=key)
+        ex_expose_ssh = True
+
+    try:
+        mist_net = Network.objects.get(id=networks[0])
+    except me.DoesNotExist:
+        raise NetworkNotFoundError()
+
+    libcloud_networks = conn.ex_list_networks()
+    ex_network = None
+    for libcloud_net in libcloud_networks:
+        if mist_net.network_id == libcloud_net.id:
+            ex_network = libcloud_net
+            break
+
+    ex_create_attr = {
+        "memory": ram,
+        "vcpus": cpu,
+        "disk_size": disk
+    }
+
+    if volumes:
+        disks = [volume.get('size') for volume in volumes]
+        ex_create_attr.update({"data_disks": disks})
+
+    if cloud_init:
+        ex_create_attr.update({"user_data": cloud_init})
+
+    try:
+        node = conn.create_node(
+            name=machine_name,
+            image=image,
+            ex_network=ex_network,
+            ex_description=description,
+            auth=auth,
+            ex_create_attr=ex_create_attr,
+            ex_expose_ssh=ex_expose_ssh
+        )
+    except Exception as e:
+        raise MachineCreationError("Gig G8, got exception %s" % e, e)
+
+    return node
 
 
 def _create_machine_rackspace(conn, public_key, machine_name,
@@ -790,21 +866,32 @@ def _create_machine_aliyun(conn, key_name, public_key,
 
 def _create_machine_ec2(conn, key_name, public_key,
                         machine_name, image, size, location, subnet_id,
-                        user_data, volumes):
+                        user_data, volumes, sec_group=''):
     """Create a machine in Amazon EC2.
     """
-    # create security group
-    name = config.EC2_SECURITYGROUP.get('name', '')
-    description = config.EC2_SECURITYGROUP.get('description', '')
-    try:
-        log.info("Attempting to create security group")
-        conn.ex_create_security_group(name=name, description=description)
-        conn.ex_authorize_security_group_permissive(name=name)
-    except Exception as exc:
-        if 'Duplicate' in str(exc):
-            log.info('Security group already exists, not doing anything.')
+    if not sec_group:
+        # create security group
+        sg_name = config.EC2_SECURITYGROUP.get('name', '')
+        description = config.EC2_SECURITYGROUP.get('description', '')
+        try:
+            log.info("Attempting to create security group")
+            conn.ex_create_security_group(
+                name=sg_name, description=description)
+            conn.ex_authorize_security_group_permissive(name=sg_name)
+        except Exception as exc:
+            if 'Duplicate' in str(exc):
+                log.info('Security group already exists, not doing anything.')
+            else:
+                raise InternalServerError(
+                    "Couldn't create security group", exc)
+    else:
+        sec_groups = conn.ex_list_security_groups()
+        for sg in sec_groups:
+            if sg['id'] == sec_group:
+                sg_name = sg['name']
+                break
         else:
-            raise InternalServerError("Couldn't create security group", exc)
+            raise BadRequestError("Security group not found: %s" % sec_group)
 
     kwargs = {
         'auth': NodeAuthSSHKey(pubkey=public_key.replace('\n', '')),
@@ -839,16 +926,22 @@ def _create_machine_ec2(conn, key_name, public_key,
 
         # if subnet is specified, then security group id
         # instead of security group name is needed
-        groups = conn.ex_list_security_groups()
-        for group in groups:
-            if group.get('name') == config.EC2_SECURITYGROUP.get('name', ''):
-                security_group_id = group.get('id')
-                break
-        kwargs.update({'ex_subnet': subnet,
-                      'ex_security_group_ids': security_group_id})
+        if not sec_group:
+            groups = conn.ex_list_security_groups()
+            for group in groups:
+                if group.get('name') == config.EC2_SECURITYGROUP.get('name',
+                                                                     ''):
+                    security_group_id = group.get('id')
+                    break
+        else:
+            security_group_id = sec_group
+        kwargs.update({
+            'ex_subnet': subnet,
+            'ex_security_group_ids': security_group_id})
 
     else:
-        kwargs.update({'ex_securitygroup': config.EC2_SECURITYGROUP['name']})
+        kwargs.update({
+            'ex_securitygroup': sg_name})
 
     mappings = []
     ex_volumes = []
@@ -1095,6 +1188,198 @@ def _create_machine_docker(conn, machine_name, image_id,
     return container
 
 
+def _create_machine_lxd(conn, machine_name, image,
+                        parameters, start=True, cluster=None,
+                        ephemeral=False,
+                        size_cpu=None, size_ram=None,
+                        profiles=None, devices=None, instance_type=None,
+                        volumes=None, networks=None):
+    """
+    Create a new LXC container on the machine described by the given
+    conn argument. Currently we only support
+    local image identified by its fingerprint
+
+    :param conn: The connection to the machine to create the container
+    :param machine_name: The name of the container
+    :param image: a libcloud.NodeImage
+    :param parameters: extra parameters for the ContainerImage
+    :param start: Whether the container should be started at creation
+    :param cluster: The cluster the container belongs to
+    :param profiles: A list of profiles e.g ["default"]
+    :param ephemeral: Whether to destroy the container on shutdown
+    :param config: Config override e.g.  {"limits.cpu": "2"},
+    :param devices: optional list of devices the container should have
+    :param instance_type: An optional instance type to
+    use as basis for limits e.g. "c2.micro"
+
+    :return: libcloud.Container
+    """
+
+    from libcloud.container.drivers.lxd import LXDAPIException
+    image = ContainerImage(id=image.id, name=image.name,
+                           extra={}, driver=conn, path=None,
+                           version=None)
+    try:
+
+        # default time out
+        timeout = conn.default_time_out
+        img_params = {
+            "source": {
+                "type": "image",
+            }
+        }
+        if parameters is None:
+            img_params["source"]["fingerprint"] = image.id
+        else:
+            # check if the image exists locally
+            image_exists, _ = conn.ex_has_image(alias=parameters)
+
+            if image_exists:
+                # then the image exists locally
+                # sp use this
+                img_params["source"]["alias"] = parameters
+            else:
+                raise MistNotImplementedError()
+
+        # by default no devices
+        devices = {}
+
+        # if we have a volume we need to create it also
+        # simply attach it. Currently assume that the
+        # volume is just given
+        if volumes is not None\
+                and len(volumes) != 0:
+            # we requested volumes as well
+            # if this is a new volume
+            # we must create it otherwise we simply
+            # append to the devices
+
+            path = volumes[0].get('path', None)
+
+            if path is None:
+                raise MachineCreationError("You need to provide"
+                                           " a path for the storage")
+
+            pool_id = volumes[0].get('pool_id', None)
+
+            if pool_id is None:
+
+                # this means we attach an
+                # existing volume
+                volume_id = volumes[0].get('volume_id', None)
+
+                if volume_id is None:
+                    raise MachineCreationError("You need to provide"
+                                               " a volume name to attach to")
+
+                from mist.api.volumes.models import Volume
+
+                volume = Volume.objects.get(id=volume_id)
+
+                volume = {volume.name: {
+                    "type": "disk",
+                    "path": path,
+                    "source": volume.name,
+                    "pool": volume.extra["pool_id"]
+                }}
+            else:
+
+                # this mean we create a new volume
+                vol_config = {}
+                definition = {"name": volumes[0]["name"], "type": "custom",
+                              "size_type": "GB"}
+
+                # keys are set according to
+                # https://linuxcontainers.org/lxd/docs/master/storage
+                if "block_filesystem" in volumes[0] and \
+                        volumes[0]["block_filesystem"] != '':
+
+                    vol_config["block.filesystem"] = \
+                        volumes[0]["block_filesystem"]
+
+                if "block_mount_options" in volumes[0] and \
+                        volumes[0]["block_mount_options"] != '':
+
+                    vol_config["block.mount_options"] = \
+                        volumes[0]['block_mount_options']
+
+                if "security_shifted" in volumes[0]:
+                    vol_config["security.shifted"] = \
+                        str(volumes[0]['security_shifted'])
+
+                vol_config['size'] = volumes[0]["size"]
+
+                definition["config"] = vol_config
+
+                try:
+                    # create the volume
+                    volume = conn.create_volume(pool_id=volumes[0]["pool_id"],
+                                                definition=definition)
+
+                    # the volume to attach
+                    volume = {volume.name: {
+                        "type": "disk",
+                        "path": path,
+                        "source": volume.name,
+                        "pool": volume.extra["pool_id"]
+                    }}
+                except Exception as e:
+                    raise MachineCreationError("LXD volume creation, "
+                                               "got exception %s" % e)
+
+            if devices is not None:
+                devices.update(volume)
+            else:
+                devices = volume
+
+        if networks is not None\
+                and len(networks) != 0:
+
+            # we also want to attache a network
+            network_id = networks
+
+            from mist.api.networks.models import LXDNetwork
+
+            network = LXDNetwork.objects.get(id=network_id)
+
+            net_type = network.extra.get("type", "nic")
+            net_nictype = network.extra.get("nictype", "bridged")
+            net_parent = network.extra.get("parent", "lxdbr0")
+
+            # add the network to the devices
+            devices[network.name] = {
+                "name": network.name,
+                "type": net_type,
+                "nictype": net_nictype,
+                "parent": net_parent,
+            }
+
+        config = {}
+
+        if size_cpu is not None:
+            config['limits.cpu'] = str(size_cpu)
+
+        if size_ram is not None:
+            config['limits.memory'] = str(size_ram) + "MB"
+
+        container = conn.deploy_container(name=machine_name, image=None,
+                                          cluster=cluster,
+                                          parameters=json.dumps(img_params),
+                                          start=start,
+                                          ex_ephemeral=ephemeral,
+                                          ex_config=config,
+                                          ex_instance_type=instance_type,
+                                          ex_devices=devices,
+                                          ex_profiles=profiles,
+                                          ex_timeout=timeout)
+        return container
+    except LXDAPIException as e:
+        raise MachineCreationError("Could not create "
+                                   "LXD Machine: %s" % e.message)
+    except Exception:
+        raise
+
+
 def _create_machine_digital_ocean(conn, cloud, key_name, private_key,
                                   public_key, machine_name, image, size,
                                   location, user_data, volumes):
@@ -1181,7 +1466,7 @@ def _create_machine_digital_ocean(conn, cloud, key_name, private_key,
 
 def _create_machine_libvirt(conn, machine_name, disk_size, ram, cpu,
                             image, disk_path, networks,
-                            public_key, cloud_init):
+                            public_key, cloud_init, vnfs=[]):
     """Create a machine in Libvirt.
     """
     # The libvirt drivers expects network names.
@@ -1215,7 +1500,8 @@ def _create_machine_libvirt(conn, machine_name, disk_size, ram, cpu,
             disk_path=disk_path,
             networks=network_names,
             public_key=public_key,
-            cloud_init=cloud_init
+            cloud_init=cloud_init,
+            vnfs=vnfs
         )
 
     except Exception as e:
@@ -1682,25 +1968,28 @@ def _create_machine_vcloud(conn, machine_name, image,
 
 
 def _create_machine_vsphere(conn, machine_name, image,
-                            size, location, network):
+                            size, location, network, folder,
+                            datastore):
     """Create a machine in vSphere.
 
     """
-
+    # get location as object from database
     try:
         from mist.api.networks.models import VSphereNetwork
-        network_name = VSphereNetwork.objects.get(id=network).name
+        network = VSphereNetwork.objects.get(id=network)
     except me.DoesNotExist:
-        network_name = None
-
+        network = None
+    if network:
+        network.id = network.network_id
     try:
         node = conn.create_node(
             name=machine_name,
             image=image,
             size=size,
             location=location,
-            ex_network=network_name,
-            cluster=location.name,
+            ex_network=network,
+            ex_folder=folder,
+            ex_datastore=datastore
         )
     except Exception as e:
         raise MachineCreationError("vSphere, got exception %s" % e, e)
